@@ -1,21 +1,35 @@
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { WebSocketServer } from "ws";
+import type { IceServer } from "../shared/protocol";
 import { PlayerConnections } from "./connections";
+import { startHeartbeat } from "./heartbeat";
 import { startMatchmaking } from "./matchmaker";
 import { Matches } from "./matches";
 import { parseClientMessage } from "./messages";
 import { firstComeFirstServed } from "./pairing";
 import { InMemoryQueue } from "./queue";
 import { serveStatic } from "./static";
+import { STUN_ONLY } from "./turn";
 
 export interface AppOptions {
   staticDir: string;
   matchmakingIntervalMs?: number;
+  heartbeatIntervalMs?: number;
+  /** A player who hasn't answered a ping for this long is treated as gone. */
+  heartbeatTimeoutMs?: number;
+  /** Called once per match; both players get the result. Must not throw (see turn.ts). */
+  getIceServers?: () => Promise<IceServer[]>;
 }
 
 /** One process serves the web app over HTTP and runs matchmaking + signaling over WebSocket. */
-export function createApp({ staticDir, matchmakingIntervalMs = 250 }: AppOptions) {
+export function createApp({
+  staticDir,
+  matchmakingIntervalMs = 250,
+  heartbeatIntervalMs = 5000,
+  heartbeatTimeoutMs = 10_000,
+  getIceServers = async () => STUN_ONLY,
+}: AppOptions) {
   const queue = new InMemoryQueue();
   const connections = new PlayerConnections();
   const matches = new Matches();
@@ -29,6 +43,8 @@ export function createApp({ staticDir, matchmakingIntervalMs = 250 }: AppOptions
     connections.add(playerId, socket);
     queue.add(playerId);
     connections.sendToPlayer(playerId, { type: "queued" });
+    // Runs the whole time the socket is open: queued, during setup, and during the match.
+    const stopHeartbeat = startHeartbeat(socket, { intervalMs: heartbeatIntervalMs, timeoutMs: heartbeatTimeoutMs });
 
     socket.on("message", (data) => {
       const message = parseClientMessage(data.toString());
@@ -38,10 +54,12 @@ export function createApp({ staticDir, matchmakingIntervalMs = 250 }: AppOptions
       }
     });
 
+    // Fires for every way a player goes: Leave, closed tab, network drop, or a missed heartbeat.
     socket.on("close", () => {
+      stopHeartbeat();
       queue.remove(playerId);
-      // Slice B: tell the opponent ("Opponent left") instead of ending the match silently.
-      matches.end(playerId);
+      const opponent = matches.end(playerId);
+      if (opponent) connections.sendToPlayer(opponent, { type: "opponent-left" });
       connections.remove(playerId);
     });
   });
@@ -52,8 +70,13 @@ export function createApp({ staticDir, matchmakingIntervalMs = 250 }: AppOptions
     intervalMs: matchmakingIntervalMs,
     onPair: ([first, second]) => {
       matches.start(first, second);
-      connections.sendToPlayer(first, { type: "matched", initiator: true });
-      connections.sendToPlayer(second, { type: "matched", initiator: false });
+      void getIceServers().then((iceServers) => {
+        // Known gap: if one player leaves while credentials load, the other gets opponent-left before ever
+        // seeing matched and has to click Find match again. Requeue them silently if that shows up in playtests.
+        if (matches.opponentOf(first) !== second) return;
+        connections.sendToPlayer(first, { type: "matched", initiator: true, iceServers });
+        connections.sendToPlayer(second, { type: "matched", initiator: false, iceServers });
+      });
     },
   });
 
