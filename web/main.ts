@@ -21,6 +21,11 @@ const connectionStatus = byId<HTMLParagraphElement>("connection-status");
 const localVideo = byId<HTMLVideoElement>("local-video");
 const remoteVideo = byId<HTMLVideoElement>("remote-video");
 
+// How long video gets to connect after "matched", and how long it may stay interrupted mid-match.
+const SETUP_TIMEOUT_MS = 15_000;
+const DISCONNECTED_GRACE_MS = 5000;
+const COULDNT_CONNECT = "Couldn't connect to opponent.";
+
 const STATE_LABELS: Record<RTCPeerConnectionState, string> = {
   new: "Connecting video…",
   connecting: "Connecting video…",
@@ -34,6 +39,8 @@ interface Session {
   camera: MediaStream;
   signaling: Signaling;
   peer?: Peer;
+  /** Ends the match with COULDNT_CONNECT unless video connects first. */
+  videoDeadline?: ReturnType<typeof setTimeout>;
 }
 
 let session: Session | null = null;
@@ -72,19 +79,38 @@ function handleServerMessage(current: Session, message: ServerMessage): void {
       localVideo.srcObject = current.camera;
       connectionStatus.textContent = STATE_LABELS.new;
       showScreen("match");
-      current.peer = createPeer(current.camera, message.initiator, {
+      current.videoDeadline = setTimeout(() => endSession(current, COULDNT_CONNECT), SETUP_TIMEOUT_MS);
+      current.peer = createPeer(current.camera, message.initiator, message.iceServers, {
         sendSignal: (payload) => current.signaling.send({ type: "signal", payload }),
         onRemoteStream: (stream) => {
           remoteVideo.srcObject = stream;
         },
         onStateChange: (state) => {
-          if (session === current) connectionStatus.textContent = STATE_LABELS[state];
+          if (session !== current) return;
+          connectionStatus.textContent = STATE_LABELS[state];
+          watchVideo(current, state);
         },
       });
+      break;
+    case "opponent-left":
+      endSession(current, "Opponent left.");
       break;
     case "signal":
       current.peer?.handleSignal(message.payload);
       break;
+  }
+}
+
+/** Gives up on a match whose video failed, or stayed interrupted too long. Closing tells the opponent via the server. */
+function watchVideo(current: Session, state: RTCPeerConnectionState): void {
+  if (state === "connected") {
+    clearTimeout(current.videoDeadline);
+    current.videoDeadline = undefined;
+  } else if (state === "failed") {
+    endSession(current, COULDNT_CONNECT);
+  } else if (state === "disconnected" && current.videoDeadline === undefined) {
+    // WebRTC often recovers from a short blip on its own, so wait before ending the match.
+    current.videoDeadline = setTimeout(() => endSession(current, COULDNT_CONNECT), DISCONNECTED_GRACE_MS);
   }
 }
 
@@ -93,6 +119,7 @@ function endSession(current: Session, message = ""): void {
   if (session !== current) return;
   session = null;
 
+  clearTimeout(current.videoDeadline);
   current.peer?.close();
   current.signaling.close();
   releaseCamera(current.camera);

@@ -12,12 +12,25 @@ Shadow box someone live over webcam. Design: [`docs/architecture.pdf`](docs/arch
 
 Two tabs on the same machine also work for a quick test. Each tab is a separate player.
 
+### TURN relay (optional in dev)
+
+Some networks (mobile data, strict school/office Wi-Fi) block direct video. The server then hands out Cloudflare
+TURN relay credentials, which needs two environment variables:
+
+| Variable | What it is |
+|---|---|
+| `TURN_KEY_ID` | Cloudflare TURN key ID |
+| `TURN_KEY_API_TOKEN` | That key's API token. Server only: never commit it or send it to the browser |
+
+In Codespaces, add both as [Codespaces secrets](https://github.com/settings/codespaces) for this repo and restart the
+Codespace. Without them the server logs a warning and uses STUN only.
+
 ## Scripts
 
 | Command | What it does |
 |---|---|
 | `npm run dev` | Web app rebuild on change + server with auto-restart |
-| `npm test` | Vitest tests (queue, pairing, matchmaking + signaling) |
+| `npm test` | Vitest tests (queue, pairing, matchmaking + signaling, heartbeats, TURN credentials) |
 | `npm run typecheck` | TypeScript check for server, web, and shared code |
 | `npm run build` / `npm start` | Build the web app once / run the server |
 

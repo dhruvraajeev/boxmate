@@ -1,7 +1,4 @@
-import type { SignalPayload } from "../shared/protocol";
-
-// Slice B adds TURN relay credentials (fetched by the server) for networks that block direct video.
-const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.cloudflare.com:3478" }];
+import type { IceServer, SignalPayload } from "../shared/protocol";
 
 export interface PeerEvents {
   sendSignal(payload: SignalPayload): void;
@@ -17,9 +14,10 @@ export interface Peer {
 /**
  * The WebRTC connection to the opponent. The initiator sends the offer; the other side answers.
  * Only one side offering avoids both browsers starting a handshake at once.
+ * iceServers come from the server: STUN, plus a TURN relay for networks that block direct video.
  */
-export function createPeer(localStream: MediaStream, initiator: boolean, events: PeerEvents): Peer {
-  const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+export function createPeer(localStream: MediaStream, initiator: boolean, iceServers: IceServer[], events: PeerEvents): Peer {
+  const pc = new RTCPeerConnection({ iceServers });
   // ICE candidates can arrive before the offer/answer they belong to; hold them until then.
   const pendingCandidates: RTCIceCandidateInit[] = [];
   // Signals are handled one at a time, in arrival order.

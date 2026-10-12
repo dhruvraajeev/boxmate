@@ -4,14 +4,16 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
-import type { ServerMessage, SignalPayload } from "../shared/protocol";
-import { createApp } from "./app";
+import type { IceServer, ServerMessage, SignalPayload } from "../shared/protocol";
+import { createApp, type AppOptions } from "./app";
+import { STUN_ONLY } from "./turn";
 
 type App = ReturnType<typeof createApp>;
 
 /** A fake browser: connects to the server and records what it receives. */
-function connectClient(port: number) {
-  const socket = new WebSocket(`ws://localhost:${port}/ws`);
+function connectClient(port: number, { answersPings = true } = {}) {
+  // answersPings: false acts like a closed laptop lid: the socket stays open but nothing comes back.
+  const socket = new WebSocket(`ws://localhost:${port}/ws`, { autoPong: answersPings });
   const received: ServerMessage[] = [];
   const waiters: Array<() => void> = [];
   socket.on("message", (data) => {
@@ -27,7 +29,13 @@ function connectClient(port: number) {
     }
   }
 
-  return { socket, received, next, opened: new Promise((resolve) => socket.once("open", resolve)) };
+  return {
+    socket,
+    received,
+    next,
+    opened: new Promise((resolve) => socket.once("open", resolve)),
+    closed: new Promise((resolve) => socket.once("close", resolve)),
+  };
 }
 
 describe("matchmaking and signaling", () => {
@@ -35,12 +43,18 @@ describe("matchmaking and signaling", () => {
   let port: number;
   let staticDir: string;
 
+  /** Restarts the server with different options. */
+  async function start(options: Omit<AppOptions, "staticDir"> = {}): Promise<void> {
+    await app?.close();
+    app = createApp({ staticDir, matchmakingIntervalMs: 10, ...options });
+    await new Promise<void>((resolve) => app.http.listen(0, resolve));
+    port = (app.http.address() as AddressInfo).port;
+  }
+
   beforeEach(async () => {
     staticDir = await mkdtemp(path.join(tmpdir(), "boxmate-"));
     await writeFile(path.join(staticDir, "index.html"), "<h1>boxmate</h1>");
-    app = createApp({ staticDir, matchmakingIntervalMs: 10 });
-    await new Promise<void>((resolve) => app.http.listen(0, resolve));
-    port = (app.http.address() as AddressInfo).port;
+    await start();
   });
 
   afterEach(async () => {
@@ -56,8 +70,8 @@ describe("matchmaking and signaling", () => {
     const matchedA = await a.next("matched");
     const matchedB = await b.next("matched");
     expect([matchedA, matchedB]).toEqual([
-      { type: "matched", initiator: true },
-      { type: "matched", initiator: false },
+      { type: "matched", initiator: true, iceServers: STUN_ONLY },
+      { type: "matched", initiator: false, iceServers: STUN_ONLY },
     ]);
 
     const offer: SignalPayload = { kind: "description", description: { type: "offer", sdp: "v=0 fake" } };
@@ -96,6 +110,62 @@ describe("matchmaking and signaling", () => {
     const relayed = await b.next("signal");
     expect(relayed).toEqual({ type: "signal", payload: { kind: "candidate", candidate: { candidate: "ok" } } });
     expect(b.received.filter((m) => m.type === "signal")).toHaveLength(0);
+  });
+
+  it("gives both players the same ICE servers, fetched once per match", async () => {
+    const turn: IceServer[] = [{ urls: ["turn:relay.example:3478"], username: "u", credential: "c" }];
+    let fetches = 0;
+    await start({ getIceServers: async () => (fetches++, turn) });
+
+    const a = connectClient(port);
+    const b = connectClient(port);
+    expect(await a.next("matched")).toMatchObject({ iceServers: turn });
+    expect(await b.next("matched")).toMatchObject({ iceServers: turn });
+    expect(fetches).toBe(1);
+  });
+
+  it("tells the opponent when their match partner disconnects", async () => {
+    const a = connectClient(port);
+    const b = connectClient(port);
+    await a.next("matched");
+    await b.next("matched");
+
+    a.socket.close();
+    expect(await b.next("opponent-left")).toEqual({ type: "opponent-left" });
+
+    // b is out of the match: anything it still sends goes nowhere.
+    b.socket.send(JSON.stringify({ type: "signal", payload: { kind: "candidate", candidate: { candidate: "late" } } }));
+  });
+
+  it("removes a silent player from the queue so nobody gets matched with them", async () => {
+    await start({ heartbeatIntervalMs: 10, heartbeatTimeoutMs: 40, matchmakingIntervalMs: 200 });
+    const silent = connectClient(port, { answersPings: false });
+    await silent.next("queued");
+    await silent.closed;
+
+    const a = connectClient(port);
+    const b = connectClient(port);
+    expect((await a.next("matched")).type).toBe("matched");
+    expect((await b.next("matched")).type).toBe("matched");
+    expect(silent.received.some((m) => m.type === "matched")).toBe(false);
+  });
+
+  it("tells the opponent when their match partner goes silent mid-match", async () => {
+    await start({ heartbeatIntervalMs: 10, heartbeatTimeoutMs: 60 });
+    const a = connectClient(port);
+    const silent = connectClient(port, { answersPings: false });
+    await a.next("matched");
+
+    expect(await a.next("opponent-left")).toEqual({ type: "opponent-left" });
+    await silent.closed;
+  });
+
+  it("keeps players who answer pings", async () => {
+    await start({ heartbeatIntervalMs: 10, heartbeatTimeoutMs: 40 });
+    const a = connectClient(port);
+    await a.next("queued");
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(a.socket.readyState).toBe(WebSocket.OPEN);
   });
 
   it("serves the web app but nothing outside its folder", async () => {
