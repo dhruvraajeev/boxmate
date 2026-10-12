@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>boxmate architecture</title>
+<!--
+  Source for docs/architecture.pdf: a one-page drawing of the system design.
+  Update it whenever a design decision changes, then rebuild with:
+  sh docs/build-architecture-pdf.sh
+-->
+<style>
+  @page { size: letter landscape; margin: 0.35in; }
+  html, body { margin: 0; background: #fff; }
+  svg { width: 100%; height: auto; display: block; }
+  text { font-family: -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; fill: #1d2433; }
+  .h1 { font-size: 20px; font-weight: 700; }
+  .title { font-size: 15px; font-weight: 700; }
+  .label { font-size: 12.5px; font-weight: 600; }
+  .small { font-size: 10.5px; fill: #5b6475; }
+  .tiny { font-size: 9.5px; fill: #5b6475; }
+  .browser { fill: #e8f1fb; stroke: #3b78c3; stroke-width: 1.5; }
+  .server { fill: #eef7ee; stroke: #3c8a4a; stroke-width: 1.5; }
+  .module { fill: #fff; stroke: #c9cfdb; stroke-width: 1; }
+  .open { fill: #fff5e3; stroke: #b26a00; stroke-width: 1.5; stroke-dasharray: 5 4; }
+  .boundary { fill: none; stroke: #5b6475; stroke-width: 1.5; stroke-dasharray: 7 5; }
+  .open-text { fill: #b26a00; }
+  .service { fill: #f5effb; stroke: #8a4fbf; stroke-width: 1.5; }
+  .later { fill: #f2f3f5; stroke: #c9cfdb; stroke-width: 1; }
+  .wire { stroke: #1d2433; stroke-width: 1.4; fill: none; }
+  .ws { stroke: #3c8a4a; stroke-width: 3; fill: none; }
+  .ws-text { fill: #3c8a4a; }
+  .flow { stroke: #3c8a4a; stroke-width: 1.4; fill: none; }
+  .video { stroke: #8a4fbf; stroke-width: 3.5; fill: none; }
+  .video-text { fill: #8a4fbf; }
+  .dashed { stroke: #b26a00; stroke-width: 1.5; stroke-dasharray: 5 4; fill: none; }
+  .rule { stroke: #1d2433; stroke-width: 1.2; }
+</style>
+</head>
+<body>
+<svg viewBox="0 0 1000 756" role="img" aria-label="boxmate system architecture drawing">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1d2433"/>
+    </marker>
+    <marker id="arr-g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#3c8a4a"/>
+    </marker>
+    <marker id="arr-ws" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#3c8a4a"/>
+    </marker>
+  </defs>
+
+  <!-- Header -->
+  <text class="h1" x="10" y="28">boxmate · system architecture</text>
+  <text class="small" x="990" y="28" text-anchor="end">Updated 2026-10-12 · slice A built (video only)</text>
+  <line class="rule" x1="10" y1="40" x2="990" y2="40"/>
+
+  <!-- ============ Browser A ============ -->
+  <rect class="browser" x="10" y="70" width="220" height="390" rx="10"/>
+  <text class="title" x="120" y="94" text-anchor="middle">Browser A</text>
+  <text class="tiny" x="120" y="108" text-anchor="middle">TypeScript + Vite (web/)</text>
+  <rect class="module" x="22" y="120" width="196" height="54" rx="6"/>
+  <text class="label" x="32" y="141">Screen controller</text>
+  <text class="small" x="32" y="159">lobby → queue → match → result</text>
+  <rect class="module" x="22" y="184" width="196" height="54" rx="6"/>
+  <text class="label" x="32" y="205">Camera</text>
+  <text class="small" x="32" y="223">webcam · released at match end</text>
+  <rect class="module" x="22" y="248" width="196" height="54" rx="6"/>
+  <text class="label" x="32" y="269">WebRTC peer</text>
+  <text class="small" x="32" y="287">video link · 15s setup timeout</text>
+  <rect class="module" x="22" y="312" width="196" height="54" rx="6"/>
+  <text class="label" x="32" y="333">Detection</text>
+  <text class="small" x="32" y="351">MediaPipe hand + face, own camera</text>
+  <rect class="module" x="22" y="376" width="196" height="54" rx="6"/>
+  <text class="label" x="32" y="397">Beat clock + overlay</text>
+  <text class="small" x="32" y="415">synced to server · HTML on video</text>
+  <text class="tiny" x="120" y="449" text-anchor="middle">modules emit events, screens react</text>
+
+  <!-- ============ Browser B ============ -->
+  <rect class="browser" x="770" y="70" width="220" height="390" rx="10"/>
+  <text class="title" x="880" y="94" text-anchor="middle">Browser B</text>
+  <text class="tiny" x="880" y="108" text-anchor="middle">same app as Browser A</text>
+  <rect class="module" x="782" y="120" width="196" height="54" rx="6"/>
+  <text class="label" x="792" y="141">Screen controller</text>
+  <text class="small" x="792" y="159">lobby → queue → match → result</text>
+  <rect class="module" x="782" y="184" width="196" height="54" rx="6"/>
+  <text class="label" x="792" y="205">Camera</text>
+  <text class="small" x="792" y="223">webcam · released at match end</text>
+  <rect class="module" x="782" y="248" width="196" height="54" rx="6"/>
+  <text class="label" x="792" y="269">WebRTC peer</text>
+  <text class="small" x="792" y="287">video link · 15s setup timeout</text>
+  <rect class="module" x="782" y="312" width="196" height="54" rx="6"/>
+  <text class="label" x="792" y="333">Detection</text>
+  <text class="small" x="792" y="351">MediaPipe hand + face, own camera</text>
+  <rect class="module" x="782" y="376" width="196" height="54" rx="6"/>
+  <text class="label" x="792" y="397">Beat clock + overlay</text>
+  <text class="small" x="792" y="415">synced to server · HTML on video</text>
+  <text class="tiny" x="880" y="449" text-anchor="middle">modules emit events, screens react</text>
+
+  <!-- ============ Azure boundary ============ -->
+  <rect class="boundary" x="300" y="56" width="400" height="460" rx="14"/>
+  <text class="label" x="500" y="74" text-anchor="middle">Azure Container Apps · min = max = 1 replica · 0.25 CPU</text>
+
+  <!-- ============ Server ============ -->
+  <rect class="server" x="318" y="84" width="364" height="420" rx="10"/>
+  <text class="title" x="500" y="106" text-anchor="middle">Node.js + TypeScript server (server/)</text>
+
+  <rect class="module" x="336" y="118" width="328" height="42" rx="6"/>
+  <text class="label" x="348" y="136">HTTP</text>
+  <text class="small" x="348" y="152">serves the lobby page + web app</text>
+
+  <rect class="module" x="336" y="176" width="328" height="54" rx="6"/>
+  <text class="label" x="348" y="195">WebSocket handler (ws)</text>
+  <text class="small" x="348" y="210">ping every 5s, drop after 10s silent</text>
+  <text class="small" x="348" y="223">relays SDP offer/answer + ICE between the pair</text>
+
+  <rect class="module" x="336" y="262" width="155" height="58" rx="6"/>
+  <text class="label" x="346" y="282">Matchmaking queue</text>
+  <text class="small" x="346" y="297">in memory, behind an</text>
+  <text class="small" x="346" y="310">add / remove / pair interface</text>
+
+  <rect class="module" x="336" y="346" width="155" height="58" rx="6"/>
+  <text class="label" x="346" y="366">Matchmaking loop</text>
+  <text class="small" x="346" y="381">every ~250ms</text>
+  <text class="small" x="346" y="394">rule: first come, first served</text>
+
+  <rect class="module" x="509" y="262" width="155" height="142" rx="6"/>
+  <text class="label" x="519" y="282">Match judge</text>
+  <text class="small" x="519" y="300">random first attacker</text>
+  <text class="small" x="519" y="315">beat 1/s, ±150ms window</text>
+  <text class="small" x="519" y="330">bite / dodge per beat</text>
+  <text class="small" x="519" y="345">3 bites in a row = kill shot</text>
+  <text class="small" x="519" y="360">clock sync at match start</text>
+  <text class="small" x="519" y="375">state in memory,</text>
+  <text class="small" x="519" y="390">no results stored</text>
+
+  <rect class="module" x="336" y="432" width="328" height="42" rx="6"/>
+  <text class="label" x="348" y="450">Send-to-player(id)</text>
+  <text class="small" x="348" y="466">every server → browser message goes out here</text>
+
+  <!-- internal flows -->
+  <line class="flow" x1="413" y1="230" x2="413" y2="260" marker-end="url(#arr-g)"/>
+  <text class="tiny" x="419" y="249">join / leave</text>
+  <line class="flow" x1="413" y1="320" x2="413" y2="344" marker-end="url(#arr-g)"/>
+  <line class="flow" x1="413" y1="404" x2="413" y2="430" marker-end="url(#arr-g)"/>
+  <text class="tiny" x="419" y="421">matched + TURN creds</text>
+  <line class="flow" x1="586" y1="230" x2="586" y2="260" marker-end="url(#arr-g)"/>
+  <text class="tiny" x="592" y="249">move reports</text>
+  <line class="flow" x1="586" y1="404" x2="586" y2="430" marker-end="url(#arr-g)"/>
+  <text class="tiny" x="592" y="421">verdicts, match over</text>
+  <path class="flow" d="M664,453 L674,453 L674,203 L666,203" marker-end="url(#arr-g)"/>
+  <text class="tiny" x="500" y="494" text-anchor="middle">single process · restart drops everyone connected</text>
+
+  <!-- ============ Browser ↔ server ============ -->
+  <line class="wire" x1="230" y1="139" x2="334" y2="139" marker-end="url(#arr)"/>
+  <text class="tiny" x="265" y="132" text-anchor="middle">HTTP</text>
+  <line class="ws" x1="230" y1="203" x2="334" y2="203" marker-start="url(#arr-ws)" marker-end="url(#arr-ws)"/>
+  <text class="tiny ws-text" x="265" y="196" text-anchor="middle">WebSocket</text>
+  <text class="tiny" x="265" y="222" text-anchor="middle">join queue</text>
+  <text class="tiny" x="265" y="235" text-anchor="middle">matched</text>
+  <text class="tiny" x="265" y="248" text-anchor="middle">SDP + ICE</text>
+  <text class="tiny" x="265" y="261" text-anchor="middle">heartbeats</text>
+  <text class="tiny" x="265" y="274" text-anchor="middle">move reports</text>
+  <text class="tiny" x="265" y="287" text-anchor="middle">verdicts</text>
+  <text class="tiny" x="265" y="304" text-anchor="middle">stays open</text>
+  <text class="tiny" x="265" y="316" text-anchor="middle">to match end</text>
+
+  <line class="wire" x1="770" y1="139" x2="666" y2="139" marker-end="url(#arr)"/>
+  <text class="tiny" x="735" y="132" text-anchor="middle">HTTP</text>
+  <line class="ws" x1="770" y1="203" x2="666" y2="203" marker-start="url(#arr-ws)" marker-end="url(#arr-ws)"/>
+  <text class="tiny ws-text" x="735" y="196" text-anchor="middle">WebSocket</text>
+  <text class="tiny" x="735" y="222" text-anchor="middle">join queue</text>
+  <text class="tiny" x="735" y="235" text-anchor="middle">matched</text>
+  <text class="tiny" x="735" y="248" text-anchor="middle">SDP + ICE</text>
+  <text class="tiny" x="735" y="261" text-anchor="middle">heartbeats</text>
+  <text class="tiny" x="735" y="274" text-anchor="middle">move reports</text>
+  <text class="tiny" x="735" y="287" text-anchor="middle">verdicts</text>
+  <text class="tiny" x="735" y="304" text-anchor="middle">stays open</text>
+  <text class="tiny" x="735" y="316" text-anchor="middle">to match end</text>
+
+  <!-- ============ Peer-to-peer video ============ -->
+  <path class="video" d="M120,460 L120,556 L880,556 L880,460"/>
+  <text class="label video-text" x="500" y="545" text-anchor="middle">WebRTC peer-to-peer video: direct between browsers, never through the server</text>
+  <line x1="500" y1="556" x2="500" y2="572" stroke="#8a4fbf" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <rect class="service" x="290" y="572" width="420" height="52" rx="6"/>
+  <text class="label video-text" x="500" y="588" text-anchor="middle">Managed TURN relay (likely Cloudflare, free tier)</text>
+  <text class="tiny" x="500" y="602" text-anchor="middle">fallback path when a network blocks direct video</text>
+  <text class="tiny" x="500" y="615" text-anchor="middle">server fetches 1h credentials per match (API token in env var) · if that fails: STUN only</text>
+
+  <!-- ============ Open decisions + later ============ -->
+  <line class="rule" x1="10" y1="632" x2="990" y2="632"/>
+  <text class="label" x="10" y="652">Open decisions + build progress</text>
+  <rect class="open" x="10"  y="660" width="980" height="30" rx="6"/>
+  <text class="label open-text" x="500" y="679" text-anchor="middle">Build progress: A video only ✓ built · B reliability (TURN, heartbeats, timeouts) next · C Azure deploy</text>
+
+  <rect class="later" x="10" y="700" width="980" height="50" rx="6"/>
+  <text class="small" x="20" y="715"><tspan font-weight="600" fill="#1d2433">Later:</tspan> abuse protection · kill-shot photo · more instances + load balancer · Redis queue (behind queue interface) · Redis pub/sub (into send-to-player) · matchmaker worker · rematch</text>
+  <text class="small" x="20" y="729"><tspan font-weight="600" fill="#1d2433">Environments:</tspan> dev on GitHub Codespaces (one process) · prod on Azure Container Apps, deployed by GitHub Actions via GitHub Container Registry · budget alert · env vars + secrets</text>
+  <text class="small" x="20" y="743"><tspan font-weight="600" fill="#1d2433">Code:</tspan> repo server/ web/ shared/ · tests: Vitest, judge first</text>
+</svg>
+</body>
+</html>

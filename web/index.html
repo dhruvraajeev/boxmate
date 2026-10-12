@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>boxmate</title>
+  </head>
+  <body>
+    <main>
+      <section id="lobby" class="screen">
+        <h1>boxmate</h1>
+        <p class="tagline">Shadow box someone over webcam.</p>
+        <button id="find-match" type="button">Find match</button>
+        <p id="lobby-message" class="message" role="status"></p>
+      </section>
+
+      <section id="finding" class="screen" hidden>
+        <p class="status">Looking for an opponent…</p>
+        <button id="cancel" type="button" class="secondary">Cancel</button>
+      </section>
+
+      <section id="match" class="screen" hidden>
+        <div class="videos">
+          <figure>
+            <video id="remote-video" autoplay playsinline></video>
+            <figcaption>Opponent</figcaption>
+          </figure>
+          <figure>
+            <video id="local-video" class="mirrored" autoplay playsinline muted></video>
+            <figcaption>You</figcaption>
+          </figure>
+        </div>
+        <p id="connection-status" class="status" role="status"></p>
+        <button id="leave" type="button" class="secondary">Leave</button>
+      </section>
+    </main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
